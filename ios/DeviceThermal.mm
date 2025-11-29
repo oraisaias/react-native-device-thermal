@@ -21,6 +21,11 @@ RCT_EXPORT_MODULE(DeviceThermal)
   return self;
 }
 
+- (void)dealloc
+{
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 - (NSArray<NSString *> *)supportedEvents
 {
   return @[ @"thermalDidChange" ];
@@ -34,56 +39,122 @@ RCT_EXPORT_MODULE(DeviceThermal)
 - (void)stopObserving
 {
   _hasListeners = NO;
+  [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                   name:NSProcessInfoThermalStateDidChangeNotification
+                                                 object:nil];
 }
+
+#pragma mark - Helper Methods
+
+- (NSString *)thermalStateToString:(NSProcessInfoThermalState)state
+{
+  switch (state) {
+    case NSProcessInfoThermalStateNominal:
+      return @"nominal";
+    case NSProcessInfoThermalStateFair:
+      return @"fair";
+    case NSProcessInfoThermalStateSerious:
+      return @"serious";
+    case NSProcessInfoThermalStateCritical:
+      return @"critical";
+    default:
+      return @"unknown";
+  }
+}
+
+- (NSString *)thermalStatePlatformString:(NSProcessInfoThermalState)state
+{
+  switch (state) {
+    case NSProcessInfoThermalStateNominal:
+      return @"NSProcessInfoThermalStateNominal";
+    case NSProcessInfoThermalStateFair:
+      return @"NSProcessInfoThermalStateFair";
+    case NSProcessInfoThermalStateSerious:
+      return @"NSProcessInfoThermalStateSerious";
+    case NSProcessInfoThermalStateCritical:
+      return @"NSProcessInfoThermalStateCritical";
+    default:
+      return @"NSProcessInfoThermalStateUnknown";
+  }
+}
+
+- (NSDictionary *)currentThermalInfo
+{
+  NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];
+
+  return @{
+    @"state": [self thermalStateToString:state],
+    @"platformState": [self thermalStatePlatformString:state],
+    @"temperature": [NSNull null]  // iOS no expone temperatura directamente
+  };
+}
+
+#pragma mark - Thermal State Change Handler
+
+- (void)thermalStateDidChange:(NSNotification *)notification
+{
+  if (!_hasListeners) return;
+
+  NSDictionary *info = [self currentThermalInfo];
+  [self sendEventWithName:@"thermalDidChange" body:info];
+}
+
+#pragma mark - Exported Methods
 
 RCT_EXPORT_METHOD(isAvailable:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-  // TODO: implementar verificación real
-  resolve(@(NO));
+  // Thermal state monitoring está disponible desde iOS 11+
+  if (@available(iOS 11.0, *)) {
+    resolve(@(YES));
+  } else {
+    resolve(@(NO));
+  }
 }
 
 RCT_EXPORT_METHOD(getThermalState:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-  // TODO: implementar lectura real
-  resolve(@"unknown");
+  if (@available(iOS 11.0, *)) {
+    NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];
+    resolve([self thermalStateToString:state]);
+  } else {
+    resolve(@"unknown");
+  }
 }
 
 RCT_EXPORT_METHOD(getThermalInfo:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
-  // TODO: implementar lectura real
-  NSDictionary *info = @{
-    @"state": @"unknown",
-    @"platformState": @"UNSUPPORTED",
-    @"temperature": [NSNull null]
-  };
-  resolve(info);
+  if (@available(iOS 11.0, *)) {
+    resolve([self currentThermalInfo]);
+  } else {
+    NSDictionary *info = @{
+      @"state": @"unknown",
+      @"platformState": @"UNSUPPORTED",
+      @"temperature": [NSNull null]
+    };
+    resolve(info);
+  }
 }
 
 RCT_EXPORT_METHOD(addListener:(NSString *)eventName)
 {
   // Will be called when the first listener is added
+  if (!_hasListeners && @available(iOS 11.0, *)) {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(thermalStateDidChange:)
+                                                 name:NSProcessInfoThermalStateDidChangeNotification
+                                               object:nil];
+  }
   _hasListeners = YES;
-  // TODO: iniciar monitoreo térmico real en el futuro
 }
 
 RCT_EXPORT_METHOD(removeListeners:(double)count)
 {
   // Will be called when listeners are removed
-  if (count == 0 || count >= 1) {
-    _hasListeners = NO;
-    // TODO: detener monitoreo en el futuro
-  }
-}
-
-// Método helper para emitir eventos (usar en el futuro)
-- (void)emitThermalEvent:(NSDictionary *)eventData
-{
-  if (!_hasListeners) return;
-
-  [self sendEventWithName:@"thermalDidChange" body:eventData];
+  // Note: React Native calls this when listeners are removed, not necessarily all
+  // We'll stop observing when _hasListeners is set to NO by stopObserving
 }
 
 #ifdef RCT_NEW_ARCH_ENABLED
