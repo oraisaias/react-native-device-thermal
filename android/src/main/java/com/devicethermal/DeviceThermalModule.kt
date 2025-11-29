@@ -110,6 +110,7 @@ class DeviceThermalModule(reactContext: ReactApplicationContext) :
   }
 
   private fun createThermalInfo(status: Int): WritableMap {
+    
     return Arguments.createMap().apply {
       putString("state", thermalStatusToString(status))
       putString("platformState", thermalStatusPlatformString(status))
