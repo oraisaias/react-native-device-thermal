@@ -1,12 +1,12 @@
 import { Text, View, StyleSheet } from 'react-native';
-import { multiply } from 'react-native-device-thermal';
+import { getThermalState } from 'react-native-device-thermal';
 
-const result = multiply(3, 7);
+const result = getThermalState();
 
 export default function App() {
   return (
     <View style={styles.container}>
-      <Text>Result: {result}</Text>
+      <Text>Thermal State: {result}</Text>
     </View>
   );
 }
